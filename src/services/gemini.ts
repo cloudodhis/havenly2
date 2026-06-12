@@ -1,31 +1,21 @@
-import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-export async function searchLocationsWithAI(query: string, latLng?: { latitude: number, longitude: number }) {
-  const config: any = {
-    tools: [{ googleMaps: {} }],
-  };
-
-  if (latLng) {
-    config.toolConfig = {
-      retrievalConfig: {
-        latLng: {
-          latitude: latLng.latitude,
-          longitude: latLng.longitude
-        }
-      }
-    };
-  }
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: query,
-    config,
+// Calls the server-side proxy (see server.js) so the Gemini API key never
+// ships to the browser. Signature is unchanged for existing callers.
+export async function searchLocationsWithAI(
+  query: string,
+  latLng?: { latitude: number; longitude: number }
+) {
+  const res = await fetch('/api/ai/search-locations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, latLng }),
   });
 
-  const text = response.text;
-  const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+  if (!res.ok) {
+    throw new Error(`Location search failed (${res.status})`);
+  }
 
-  return { text, chunks };
+  return (await res.json()) as {
+    text?: string;
+    chunks: any[];
+  };
 }
