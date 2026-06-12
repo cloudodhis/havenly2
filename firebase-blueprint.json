@@ -1,0 +1,374 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the platform, either a renter or a landlord.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The user's unique ID from Firebase Auth." },
+        "name": { "type": "string", "description": "The user's display name." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "photoUrl": { "type": "string", "format": "uri", "description": "The user's profile picture URL." },
+        "role": { "type": "string", "enum": ["renter", "landlord", "admin"], "description": "The user's role." },
+        "phone": { "type": "string", "description": "User's phone number." },
+        "status": { "type": "string", "enum": ["active", "suspended", "banned"], "description": "User account status." },
+        "isVerified": { "type": "boolean", "description": "Whether the landlord account is verified." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user was created." }
+      },
+      "required": ["uid", "name", "email", "role", "createdAt"]
+    },
+    "Property": {
+      "title": "Property",
+      "description": "A rental property listing.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the listing." },
+        "location": { "type": "string", "description": "The location/address of the property." },
+        "lat": { "type": "number", "description": "Latitude of the property." },
+        "lng": { "type": "number", "description": "Longitude of the property." },
+        "price": { "type": "number", "description": "Monthly rent price." },
+        "currency": { "type": "string", "description": "Currency code (e.g., USD)." },
+        "rating": { "type": "number", "description": "Average rating of the property." },
+        "imageUrl": { "type": "string", "format": "uri", "description": "Main image URL." },
+        "imageUrls": { "type": "array", "items": { "type": "string", "format": "uri" }, "description": "List of image URLs." },
+        "beds": { "type": "number", "description": "Number of bedrooms." },
+        "baths": { "type": "number", "description": "Number of bathrooms." },
+        "guests": { "type": "number", "description": "Maximum number of guests." },
+        "sqft": { "type": "number", "description": "Square footage." },
+        "securityDeposit": { "type": "number", "description": "Security deposit amount." },
+        "firstMonthRent": { "type": "number", "description": "First month's rent amount." },
+        "type": { "type": "string", "description": "Property type (e.g., Apartment, House)." },
+        "amenities": { "type": "array", "items": { "type": "string" }, "description": "List of amenities." },
+        "isAIRecommended": { "type": "boolean", "description": "Whether it is AI recommended." },
+        "isFeatured": { "type": "boolean", "description": "Whether the listing is featured." },
+        "status": { "type": "string", "enum": ["pending", "active", "reported", "expired", "removed"], "description": "Status of the listing." },
+        "landlordId": { "type": "string", "description": "The UID of the landlord who owns this listing." },
+        "moderationNotes": { "type": "string", "description": "Internal moderation notes." },
+        "fraudIndicators": { "type": "array", "items": { "type": "string" }, "description": "List of fraud indicators." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the property was listed." }
+      },
+      "required": ["title", "location", "lat", "lng", "price", "currency", "imageUrl", "beds", "baths", "guests", "sqft", "type", "amenities", "landlordId", "createdAt"]
+    },
+    "Inquiry": {
+      "title": "Inquiry",
+      "description": "An inquiry sent by a renter to a landlord about a property.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "The ID of the property." },
+        "renterId": { "type": "string", "description": "The UID of the renter sending the inquiry." },
+        "landlordId": { "type": "string", "description": "The UID of the landlord receiving the inquiry." },
+        "message": { "type": "string", "description": "The inquiry message." },
+        "status": { "type": "string", "enum": ["pending", "replied", "closed"], "description": "Status of the inquiry." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the inquiry was sent." }
+      },
+      "required": ["propertyId", "renterId", "landlordId", "message", "status", "createdAt"]
+    },
+    "SavedProperty": {
+      "title": "SavedProperty",
+      "description": "A property saved by a renter.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user who saved the property." },
+        "propertyId": { "type": "string", "description": "The ID of the saved property." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the property was saved." }
+      },
+      "required": ["userId", "propertyId", "createdAt"]
+    },
+    "Viewing": {
+      "title": "Viewing",
+      "description": "A scheduled property viewing.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "The ID of the property." },
+        "renterId": { "type": "string", "description": "The UID of the renter." },
+        "landlordId": { "type": "string", "description": "The UID of the landlord." },
+        "date": { "type": "string", "format": "date-time", "description": "The scheduled date and time for the viewing." },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled", "completed"], "description": "Status of the viewing." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the viewing was requested." }
+      },
+      "required": ["propertyId", "renterId", "landlordId", "date", "status", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "A report submitted by a user for moderation.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["listing", "user", "message"], "description": "The type of item being reported." },
+        "reportedItemId": { "type": "string", "description": "The ID of the reported item." },
+        "reportedItemName": { "type": "string", "description": "The name or title of the reported item." },
+        "landlordId": { "type": "string", "description": "The ID of the landlord associated with the reported item (if applicable)." },
+        "reportedBy": { "type": "string", "description": "The UID of the user who submitted the report." },
+        "reportedByName": { "type": "string", "description": "The name of the user who submitted the report." },
+        "reason": { "type": "string", "description": "The reason for the report." },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "dismissed", "action_taken", "resolved"], "description": "The status of the report." },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"], "description": "The priority of the report." },
+        "notes": { "type": "string", "description": "Moderation notes." },
+        "evidence": { "type": "array", "items": { "type": "string", "format": "uri" }, "description": "List of evidence image URLs." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the report was created." }
+      },
+      "required": ["type", "reportedItemId", "reportedItemName", "reportedBy", "reportedByName", "reason", "status", "priority", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "A chat conversation between a renter and a landlord.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "The ID of the property." },
+        "renterId": { "type": "string", "description": "The UID of the renter." },
+        "landlordId": { "type": "string", "description": "The UID of the landlord." },
+        "lastMessage": { "type": "string", "description": "The last message sent." },
+        "lastMessageAt": { "type": "string", "format": "date-time", "description": "When the last message was sent." },
+        "isFlagged": { "type": "boolean", "description": "Whether the conversation has been flagged by the system." },
+        "flagReason": { "type": "string", "description": "Reason for flagging." },
+        "moderatorNotes": { "type": "string", "description": "Notes added by a moderator." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the conversation was created." }
+      },
+      "required": ["propertyId", "renterId", "landlordId", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single message within a conversation.",
+      "type": "object",
+      "properties": {
+        "conversationId": { "type": "string", "description": "The ID of the conversation." },
+        "senderId": { "type": "string", "description": "The UID of the sender." },
+        "text": { "type": "string", "description": "The message text." },
+        "isFlagged": { "type": "boolean", "description": "Whether the message is flagged." },
+        "flagReason": { "type": "string", "description": "Reason for flagging." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the message was sent." }
+      },
+      "required": ["conversationId", "senderId", "text", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A payment transaction.",
+      "type": "object",
+      "properties": {
+        "transactionId": { "type": "string", "description": "The transaction ID." },
+        "bookingId": { "type": "string", "description": "The ID of the booking." },
+        "tenantId": { "type": "string", "description": "The UID of the tenant." },
+        "landlordId": { "type": "string", "description": "The UID of the landlord." },
+        "propertyId": { "type": "string", "description": "The ID of the property." },
+        "amount": { "type": "number", "description": "The payment amount." },
+        "serviceFee": { "type": "number", "description": "The service fee." },
+        "status": { "type": "string", "enum": ["Completed", "Pending", "Failed", "Refunded", "Held"], "description": "Status of the payment." },
+        "type": { "type": "string", "enum": ["Rent", "Security Deposit", "Booking Fee"], "description": "Type of payment." },
+        "method": { "type": "string", "description": "Payment method." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the payment was created." },
+        "propertyTitle": { "type": "string", "description": "The title of the property." },
+        "landlordName": { "type": "string", "description": "The name of the landlord." },
+        "tenantName": { "type": "string", "description": "The name of the tenant." }
+      },
+      "required": ["transactionId", "bookingId", "tenantId", "landlordId", "propertyId", "amount", "serviceFee", "status", "type", "method", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A property booking.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "The ID of the property." },
+        "tenantId": { "type": "string", "description": "The UID of the tenant." },
+        "landlordId": { "type": "string", "description": "The UID of the landlord." },
+        "startDate": { "type": "string", "format": "date-time", "description": "The start date of the booking." },
+        "endDate": { "type": "string", "format": "date-time", "description": "The end date of the booking." },
+        "rentAmount": { "type": "number", "description": "The rent amount." },
+        "depositAmount": { "type": "number", "description": "The deposit amount." },
+        "status": { "type": "string", "description": "Status of the booking." },
+        "nextPaymentDue": { "type": "string", "format": "date-time", "description": "The next payment due date." }
+      },
+      "required": ["propertyId", "tenantId", "landlordId", "startDate", "endDate", "rentAmount", "depositAmount", "status", "nextPaymentDue"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user receiving the notification." },
+        "title": { "type": "string", "description": "The title of the notification." },
+        "message": { "type": "string", "description": "The message body of the notification." },
+        "type": { "type": "string", "enum": ["payment", "booking", "system", "message"], "description": "The type of notification." },
+        "read": { "type": "boolean", "description": "Whether the notification has been read." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the notification was created." },
+        "link": { "type": "string", "description": "Optional link to navigate to when clicked." }
+      },
+      "required": ["userId", "title", "message", "type", "read", "createdAt"]
+    },
+    "AdminNotification": {
+      "title": "AdminNotification",
+      "description": "A notification campaign sent by an admin.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the notification." },
+        "message": { "type": "string", "description": "The message body." },
+        "audience": { "type": "string", "enum": ["all", "renter", "landlord", "custom"], "description": "Target audience." },
+        "deliveryTypes": { "type": "array", "items": { "type": "string" }, "description": "Delivery channels (in-app, push, email)." },
+        "status": { "type": "string", "enum": ["draft", "scheduled", "sent", "failed"], "description": "Status of the campaign." },
+        "scheduledFor": { "type": "string", "format": "date-time", "description": "When it is scheduled to be sent." },
+        "sentAt": { "type": "string", "format": "date-time", "description": "When it was actually sent." },
+        "type": { "type": "string", "enum": ["announcement", "maintenance", "payment_reminder", "promotion", "security_alert"], "description": "Category of notification." },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"], "description": "Priority level." },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "sent": { "type": "number" },
+            "delivered": { "type": "number" },
+            "opened": { "type": "number" },
+            "clicked": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the campaign was created." }
+      },
+      "required": ["title", "message", "audience", "status", "type", "priority", "createdAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "A review of a property, landlord, or renter.",
+      "type": "object",
+      "properties": {
+        "reviewerId": { "type": "string", "description": "The UID of the reviewer." },
+        "reviewerName": { "type": "string", "description": "The name of the reviewer." },
+        "targetId": { "type": "string", "description": "The ID of the property, landlord, or renter being reviewed." },
+        "targetName": { "type": "string", "description": "The name of the property, landlord, or renter being reviewed." },
+        "targetType": { "type": "string", "enum": ["property", "landlord", "renter"], "description": "The type of the target." },
+        "rating": { "type": "number", "description": "The rating given (1-5)." },
+        "comment": { "type": "string", "description": "The review comment." },
+        "status": { "type": "string", "enum": ["approved", "flagged", "pending", "removed"], "description": "The status of the review." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the review was created." },
+        "flagReason": { "type": "string", "description": "Reason for flagging." },
+        "flaggedBy": { "type": "string", "description": "The UID of the user who flagged the review." },
+        "adminNotes": { "type": "string", "description": "Notes added by an admin." }
+      },
+      "required": ["reviewerId", "reviewerName", "targetId", "targetName", "targetType", "rating", "comment", "status", "createdAt"]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Public profile information for landlords.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The user's unique ID." },
+        "name": { "type": "string", "description": "The user's display name." },
+        "photoUrl": { "type": "string", "format": "uri", "description": "The user's profile picture URL." },
+        "businessName": { "type": "string", "description": "The landlord's business name." },
+        "businessDescription": { "type": "string", "description": "Description of the landlord's business." },
+        "website": { "type": "string", "format": "uri", "description": "Business website URL." },
+        "contactEmail": { "type": "string", "format": "email", "description": "Public contact email." },
+        "contactPhone": { "type": "string", "description": "Public contact phone number." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the profile was created." }
+      },
+      "required": ["uid", "name", "createdAt"]
+    },
+    "Application": {
+      "title": "Application",
+      "description": "A property application submitted by a tenant.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "The ID of the property." },
+        "tenantId": { "type": "string", "description": "The UID of the tenant." },
+        "landlordId": { "type": "string", "description": "The UID of the landlord." },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "completed"], "description": "Status of the application." },
+        "moveInDate": { "type": "string", "format": "date-time", "description": "The requested move-in date." },
+        "occupants": { "type": "number", "description": "Number of occupants." },
+        "employmentStatus": { "type": "string", "description": "Employment status of the applicant." },
+        "monthlyIncome": { "type": "number", "description": "Monthly income of the applicant." },
+        "message": { "type": "string", "description": "Optional message from the applicant." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the application was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the application was last updated." },
+        "propertyTitle": { "type": "string", "description": "The title of the property." },
+        "tenantName": { "type": "string", "description": "The name of the tenant." },
+        "landlordName": { "type": "string", "description": "The name of the landlord." }
+      },
+      "required": ["propertyId", "tenantId", "landlordId", "status", "moveInDate", "occupants", "employmentStatus", "monthlyIncome", "createdAt", "updatedAt", "propertyTitle", "tenantName", "landlordName"]
+    },
+    "Dispute": {
+      "title": "Dispute",
+      "description": "A dispute between a tenant and a landlord.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["Payment Issue", "Listing Complaint", "User Misconduct", "Booking Issue"], "description": "The type of dispute." },
+        "status": { "type": "string", "enum": ["Open", "Under Review", "Resolved", "Escalated"], "description": "The status of the dispute." },
+        "priority": { "type": "string", "enum": ["Low", "Medium", "High"], "description": "The priority of the dispute." },
+        "tenantId": { "type": "string", "description": "The UID of the tenant involved." },
+        "landlordId": { "type": "string", "description": "The UID of the landlord involved." },
+        "tenantName": { "type": "string", "description": "The name of the tenant." },
+        "landlordName": { "type": "string", "description": "The name of the landlord." },
+        "propertyId": { "type": "string", "description": "The ID of the property involved." },
+        "propertyTitle": { "type": "string", "description": "The title of the property involved." },
+        "description": { "type": "string", "description": "The description of the complaint." },
+        "evidence": { "type": "array", "items": { "type": "string", "format": "uri" }, "description": "List of evidence image URLs." },
+        "conversationId": { "type": "string", "description": "The ID of the conversation related to the dispute." },
+        "resolutionDecision": { "type": "string", "description": "The decision made to resolve the dispute." },
+        "resolutionReason": { "type": "string", "description": "The reason for the resolution decision." },
+        "adminNotes": { "type": "string", "description": "Internal notes by the admin." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the dispute was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the dispute was last updated." }
+      },
+      "required": ["type", "status", "priority", "tenantId", "landlordId", "tenantName", "landlordName", "description", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/public_profiles/{profileId}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Stores public profiles for landlords."
+    },
+    "/properties/{propertyId}": {
+      "schema": { "$ref": "#/entities/Property" },
+      "description": "Stores property listings."
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/Inquiry" },
+      "description": "Stores inquiries from renters to landlords."
+    },
+    "/savedProperties/{savedPropertyId}": {
+      "schema": { "$ref": "#/entities/SavedProperty" },
+      "description": "Stores saved properties for users."
+    },
+    "/viewings/{viewingId}": {
+      "schema": { "$ref": "#/entities/Viewing" },
+      "description": "Stores scheduled property viewings."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "Stores user reports for moderation."
+    },
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/Conversation" },
+      "description": "Stores chat conversations."
+    },
+    "/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Stores individual chat messages."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Stores payment transactions."
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Stores property bookings."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Stores user notifications."
+    },
+    "/applications/{applicationId}": {
+      "schema": { "$ref": "#/entities/Application" },
+      "description": "Stores property applications."
+    },
+    "/adminNotifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AdminNotification" },
+      "description": "Stores notification campaigns sent by admins."
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Stores user reviews for properties and landlords."
+    },
+    "/disputes/{disputeId}": {
+      "schema": { "$ref": "#/entities/Dispute" },
+      "description": "Stores disputes between users."
+    }
+  }
+}

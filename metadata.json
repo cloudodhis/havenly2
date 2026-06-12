@@ -1,0 +1,7 @@
+{
+  "name": "havenly",
+  "description": "A modern proptech marketplace platform for finding and renting long-term homes.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

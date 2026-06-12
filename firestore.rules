@@ -1,0 +1,658 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        (request.auth.token.email == "cloudodhis18@gmail.com")
+      );
+    }
+    
+    function isLandlord() {
+      return isAuthenticated();
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(allowedFields) {
+      return request.resource.data.keys().hasOnly(allowedFields);
+    }
+
+    function isFieldUnchanged(field) {
+      return ! (field in request.resource.data) || (request.resource.data[field] == resource.data[field]);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'name', 'email', 'photoUrl', 'role', 'createdAt', 'phone', 'status', 'isVerified']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 150 &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() < 500)) &&
+             data.role in ['renter', 'landlord', 'admin'] &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() < 20)) &&
+             (!('status' in data) || (data.status in ['active', 'suspended', 'banned'])) &&
+             (!('isVerified' in data) || (data.isVerified is bool)) &&
+             data.createdAt is string && isValidDateString(data.createdAt);
+    }
+
+    function isValidProperty(data, isCreate) {
+      let allowedFields = ['title', 'location', 'lat', 'lng', 'price', 'currency', 'beds', 'baths', 'guests', 'sqft', 'securityDeposit', 'firstMonthRent', 'moveInDate', 'term', 'type', 'amenities', 'rating', 'imageUrl', 'imageUrls', 'isAIRecommended', 'isFeatured', 'priority', 'promotionType', 'featuredUntil', 'status', 'moderationNotes', 'fraudIndicators', 'landlordId', 'createdAt'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['title', 'location', 'lat', 'lng', 'price', 'currency', 'beds', 'baths', 'guests', 'sqft', 'type', 'amenities', 'imageUrl', 'landlordId', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('title' in data) || (data.title is string && data.title.size() > 0 && data.title.size() < 200)) &&
+        (!('location' in data) || (data.location is string && data.location.size() > 0 && data.location.size() < 200)) &&
+        (!('lat' in data) || (data.lat is number && data.lat >= -90 && data.lat <= 90)) &&
+        (!('lng' in data) || (data.lng is number && data.lng >= -180 && data.lng <= 180)) &&
+        (!('price' in data) || (data.price is number && data.price >= 0)) &&
+        (!('currency' in data) || (data.currency is string && data.currency.size() == 3)) &&
+        (!('beds' in data) || (data.beds is number && data.beds >= 0)) &&
+        (!('baths' in data) || (data.baths is number && data.baths >= 0)) &&
+        (!('guests' in data) || (data.guests is number && data.guests >= 0)) &&
+        (!('sqft' in data) || (data.sqft is number && data.sqft >= 0)) &&
+        (!('securityDeposit' in data) || data.securityDeposit == null || (data.securityDeposit is number && data.securityDeposit >= 0)) &&
+        (!('firstMonthRent' in data) || data.firstMonthRent == null || (data.firstMonthRent is number && data.firstMonthRent >= 0)) &&
+        (!('moveInDate' in data) || (data.moveInDate is string && data.moveInDate.size() < 50)) &&
+        (!('term' in data) || (data.term is string && data.term.size() < 50)) &&
+        (!('type' in data) || (data.type is string && data.type.size() > 0 && data.type.size() < 50)) &&
+        (!('amenities' in data) || (data.amenities is list && data.amenities.size() <= 30)) &&
+        (!('rating' in data) || data.rating == null || (data.rating is number && data.rating >= 0 && data.rating <= 5)) &&
+        (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() > 0 && data.imageUrl.size() < 1048576)) &&
+        (!('imageUrls' in data) || data.imageUrls == null || (data.imageUrls is list && data.imageUrls.size() <= 5)) &&
+        (!('isAIRecommended' in data) || data.isAIRecommended == null || data.isAIRecommended is bool) &&
+        (!('isFeatured' in data) || data.isFeatured == null || data.isFeatured is bool) &&
+        (!('priority' in data) || data.priority == null || (data.priority in ['Top', 'High', 'Normal'])) &&
+        (!('promotionType' in data) || data.promotionType == null || (data.promotionType in ['Free', 'Paid'])) &&
+        (!('featuredUntil' in data) || data.featuredUntil == null || (data.featuredUntil is string && isValidDateString(data.featuredUntil))) &&
+        (!('status' in data) || (data.status in ['pending', 'active', 'reported', 'expired', 'removed', 'changes_requested'])) &&
+        (!('moderationNotes' in data) || (data.moderationNotes is string && data.moderationNotes.size() < 2000)) &&
+        (!('fraudIndicators' in data) || (data.fraudIndicators is list && data.fraudIndicators.size() <= 20)) &&
+        (!('landlordId' in data) || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidInquiry(data, isCreate) {
+      let allowedFields = ['propertyId', 'renterId', 'landlordId', 'message', 'status', 'createdAt'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['propertyId', 'renterId', 'landlordId', 'message', 'status', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('propertyId' in data) || (data.propertyId is string && data.propertyId.size() > 0 && data.propertyId.size() < 128)) &&
+        (!('renterId' in data) || (data.renterId is string && data.renterId.size() > 0 && data.renterId.size() < 128)) &&
+        (!('landlordId' in data) || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('message' in data) || (data.message is string && data.message.size() > 0 && data.message.size() < 2000)) &&
+        (!('status' in data) || (data.status in ['pending', 'replied', 'closed'])) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidSavedProperty(data, isCreate) {
+      let allowedFields = ['userId', 'propertyId', 'createdAt'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['userId', 'propertyId', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('userId' in data) || (data.userId is string && data.userId.size() > 0 && data.userId.size() < 128)) &&
+        (!('propertyId' in data) || (data.propertyId is string && data.propertyId.size() > 0 && data.propertyId.size() < 128)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidViewing(data, isCreate) {
+      let allowedFields = ['propertyId', 'renterId', 'landlordId', 'date', 'status', 'createdAt'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['propertyId', 'renterId', 'landlordId', 'date', 'status', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('propertyId' in data) || (data.propertyId is string && data.propertyId.size() > 0 && data.propertyId.size() < 128)) &&
+        (!('renterId' in data) || (data.renterId is string && data.renterId.size() > 0 && data.renterId.size() < 128)) &&
+        (!('landlordId' in data) || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('date' in data) || (data.date is string && isValidDateString(data.date))) &&
+        (!('status' in data) || (data.status in ['pending', 'confirmed', 'cancelled', 'completed'])) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidReport(data, isCreate) {
+      let allowedFields = ['type', 'reportedItemId', 'reportedItemName', 'landlordId', 'reportedBy', 'reportedByName', 'reason', 'status', 'priority', 'createdAt', 'notes', 'evidence'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['type', 'reportedItemId', 'reportedItemName', 'reportedBy', 'reportedByName', 'reason', 'status', 'priority', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('type' in data) || (data.type in ['listing', 'user', 'message'])) &&
+        (!('reportedItemId' in data) || (data.reportedItemId is string && data.reportedItemId.size() > 0 && data.reportedItemId.size() < 128)) &&
+        (!('reportedItemName' in data) || (data.reportedItemName is string && data.reportedItemName.size() > 0 && data.reportedItemName.size() < 500)) &&
+        (!('landlordId' in data) || data.landlordId == null || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('reportedBy' in data) || (data.reportedBy is string && data.reportedBy.size() > 0 && data.reportedBy.size() < 128)) &&
+        (!('reportedByName' in data) || (data.reportedByName is string && data.reportedByName.size() >= 0 && data.reportedByName.size() < 200)) &&
+        (!('reason' in data) || (data.reason is string && data.reason.size() > 0 && data.reason.size() < 2000)) &&
+        (!('status' in data) || (data.status in ['pending', 'reviewed', 'dismissed', 'action_taken', 'resolved'])) &&
+        (!('priority' in data) || (data.priority in ['low', 'medium', 'high'])) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt))) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() < 2000)) &&
+        (!('evidence' in data) || (data.evidence is list && data.evidence.size() <= 5));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidConversation(data, isCreate) {
+      let allowedFields = ['propertyId', 'renterId', 'landlordId', 'lastMessage', 'lastMessageAt', 'isFlagged', 'flagReason', 'moderatorNotes', 'createdAt'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['propertyId', 'renterId', 'landlordId', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('propertyId' in data) || (data.propertyId is string && data.propertyId.size() > 0 && data.propertyId.size() < 128)) &&
+        (!('renterId' in data) || (data.renterId is string && data.renterId.size() > 0 && data.renterId.size() < 128)) &&
+        (!('landlordId' in data) || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('lastMessage' in data) || (data.lastMessage is string && data.lastMessage.size() < 2000)) &&
+        (!('lastMessageAt' in data) || (data.lastMessageAt is string && isValidDateString(data.lastMessageAt))) &&
+        (!('isFlagged' in data) || (data.isFlagged is bool)) &&
+        (!('flagReason' in data) || (data.flagReason is string && data.flagReason.size() < 2000)) &&
+        (!('moderatorNotes' in data) || (data.moderatorNotes is string && data.moderatorNotes.size() < 5000)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidMessage(data, isCreate) {
+      let allowedFields = ['conversationId', 'senderId', 'text', 'isFlagged', 'flagReason', 'createdAt'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['conversationId', 'senderId', 'text', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('conversationId' in data) || (data.conversationId is string && data.conversationId.size() > 0 && data.conversationId.size() < 128)) &&
+        (!('senderId' in data) || (data.senderId is string && data.senderId.size() > 0 && data.senderId.size() < 128)) &&
+        (!('text' in data) || (data.text is string && data.text.size() > 0 && data.text.size() < 2000)) &&
+        (!('isFlagged' in data) || (data.isFlagged is bool)) &&
+        (!('flagReason' in data) || (data.flagReason is string && data.flagReason.size() < 2000)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidPayment(data, isCreate) {
+      let allowedFields = ['transactionId', 'bookingId', 'tenantId', 'landlordId', 'propertyId', 'amount', 'serviceFee', 'status', 'type', 'method', 'createdAt', 'propertyTitle', 'landlordName', 'tenantName'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['transactionId', 'bookingId', 'tenantId', 'landlordId', 'propertyId', 'amount', 'serviceFee', 'status', 'type', 'method', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('transactionId' in data) || (data.transactionId is string && data.transactionId.size() > 0 && data.transactionId.size() < 128)) &&
+        (!('bookingId' in data) || (data.bookingId is string && data.bookingId.size() > 0 && data.bookingId.size() < 128)) &&
+        (!('tenantId' in data) || (data.tenantId is string && data.tenantId.size() > 0 && data.tenantId.size() < 128)) &&
+        (!('landlordId' in data) || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('propertyId' in data) || (data.propertyId is string && data.propertyId.size() > 0 && data.propertyId.size() < 128)) &&
+        (!('amount' in data) || (data.amount is number && data.amount >= 0)) &&
+        (!('serviceFee' in data) || (data.serviceFee is number && data.serviceFee >= 0)) &&
+        (!('status' in data) || (data.status in ['Completed', 'Pending', 'Failed', 'Refunded', 'Held'])) &&
+        (!('type' in data) || (data.type in ['Rent', 'Security Deposit', 'Booking Fee'])) &&
+        (!('method' in data) || (data.method is string && data.method.size() > 0 && data.method.size() < 50)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt))) &&
+        (!('propertyTitle' in data) || (data.propertyTitle is string && data.propertyTitle.size() < 200)) &&
+        (!('landlordName' in data) || (data.landlordName is string && data.landlordName.size() < 100)) &&
+        (!('tenantName' in data) || (data.tenantName is string && data.tenantName.size() < 100));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidBooking(data, isCreate) {
+      let allowedFields = ['propertyId', 'tenantId', 'landlordId', 'startDate', 'endDate', 'rentAmount', 'depositAmount', 'status', 'nextPaymentDue', 'propertyTitle', 'landlordName'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['propertyId', 'tenantId', 'landlordId', 'startDate', 'endDate', 'rentAmount', 'depositAmount', 'status', 'nextPaymentDue'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('propertyId' in data) || (data.propertyId is string && data.propertyId.size() > 0 && data.propertyId.size() < 128)) &&
+        (!('tenantId' in data) || (data.tenantId is string && data.tenantId.size() > 0 && data.tenantId.size() < 128)) &&
+        (!('landlordId' in data) || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('startDate' in data) || (data.startDate is string && isValidDateString(data.startDate))) &&
+        (!('endDate' in data) || (data.endDate is string && isValidDateString(data.endDate))) &&
+        (!('rentAmount' in data) || (data.rentAmount is number && data.rentAmount >= 0)) &&
+        (!('depositAmount' in data) || (data.depositAmount is number && data.depositAmount >= 0)) &&
+        (!('status' in data) || (data.status is string && data.status.size() > 0 && data.status.size() < 50)) &&
+        (!('nextPaymentDue' in data) || (data.nextPaymentDue is string && isValidDateString(data.nextPaymentDue))) &&
+        (!('propertyTitle' in data) || (data.propertyTitle is string && data.propertyTitle.size() < 200)) &&
+        (!('landlordName' in data) || (data.landlordName is string && data.landlordName.size() < 100));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidApplication(data, isCreate) {
+      let allowedFields = ['propertyId', 'tenantId', 'landlordId', 'status', 'moveInDate', 'occupants', 'employmentStatus', 'monthlyIncome', 'message', 'createdAt', 'updatedAt', 'propertyTitle', 'tenantName', 'landlordName'];
+      
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['propertyId', 'tenantId', 'landlordId', 'status', 'moveInDate', 'occupants', 'employmentStatus', 'monthlyIncome', 'createdAt', 'updatedAt', 'propertyTitle', 'tenantName', 'landlordName'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('propertyId' in data) || (data.propertyId is string && data.propertyId.size() > 0 && data.propertyId.size() < 128)) &&
+        (!('tenantId' in data) || (data.tenantId is string && data.tenantId.size() > 0 && data.tenantId.size() < 128)) &&
+        (!('landlordId' in data) || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('status' in data) || (data.status in ['pending', 'approved', 'rejected', 'completed'])) &&
+        (!('moveInDate' in data) || (data.moveInDate is string && isValidDateString(data.moveInDate))) &&
+        (!('occupants' in data) || (data.occupants is number && data.occupants >= 1)) &&
+        (!('employmentStatus' in data) || (data.employmentStatus is string && data.employmentStatus.size() > 0 && data.employmentStatus.size() < 100)) &&
+        (!('monthlyIncome' in data) || (data.monthlyIncome is number && data.monthlyIncome >= 0)) &&
+        (!('message' in data) || (data.message is string && data.message.size() < 2000)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt))) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && isValidDateString(data.updatedAt))) &&
+        (!('propertyTitle' in data) || (data.propertyTitle is string && data.propertyTitle.size() > 0 && data.propertyTitle.size() < 200)) &&
+        (!('tenantName' in data) || (data.tenantName is string && data.tenantName.size() > 0 && data.tenantName.size() < 100)) &&
+        (!('landlordName' in data) || (data.landlordName is string && data.landlordName.size() > 0 && data.landlordName.size() < 100));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidNotification(data, isCreate) {
+      let allowedFields = ['userId', 'title', 'message', 'type', 'read', 'createdAt', 'link'];
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['userId', 'title', 'message', 'type', 'read', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('userId' in data) || (data.userId is string && data.userId.size() > 0 && data.userId.size() < 128)) &&
+        (!('title' in data) || (data.title is string && data.title.size() > 0 && data.title.size() < 256)) &&
+        (!('message' in data) || (data.message is string && data.message.size() > 0 && data.message.size() < 1024)) &&
+        (!('type' in data) || (data.type in ['payment', 'booking', 'system', 'message'])) &&
+        (!('read' in data) || (data.read is bool)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt))) &&
+        (!('link' in data) || (data.link is string && data.link.size() < 512));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidAdminNotification(data, isCreate) {
+      let allowedFields = ['title', 'message', 'audience', 'deliveryTypes', 'status', 'scheduledFor', 'sentAt', 'customSegment', 'type', 'priority', 'stats', 'createdAt'];
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['title', 'message', 'audience', 'deliveryTypes', 'status', 'type', 'priority', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('title' in data) || (data.title is string && data.title.size() > 0 && data.title.size() < 256)) &&
+        (!('message' in data) || (data.message is string && data.message.size() > 0 && data.message.size() < 2000)) &&
+        (!('audience' in data) || (data.audience in ['all', 'renter', 'landlord', 'custom'])) &&
+        (!('deliveryTypes' in data) || (data.deliveryTypes is list && data.deliveryTypes.size() <= 10)) &&
+        (!('status' in data) || (data.status in ['draft', 'scheduled', 'sent', 'failed'])) &&
+        (!('scheduledFor' in data) || data.scheduledFor == null || (data.scheduledFor is string && isValidDateString(data.scheduledFor))) &&
+        (!('sentAt' in data) || data.sentAt == null || (data.sentAt is string && isValidDateString(data.sentAt))) &&
+        (!('customSegment' in data) || data.customSegment == null || (data.customSegment is string && data.customSegment.size() < 100)) &&
+        (!('type' in data) || (data.type in ['announcement', 'maintenance', 'payment_reminder', 'promotion', 'security_alert'])) &&
+        (!('priority' in data) || (data.priority in ['low', 'medium', 'high'])) &&
+        (!('stats' in data) || data.stats == null || (data.stats is map)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidReview(data, isCreate) {
+      let allowedFields = ['reviewerId', 'reviewerName', 'targetId', 'targetName', 'targetType', 'rating', 'comment', 'status', 'createdAt', 'flagReason', 'flaggedBy', 'adminNotes'];
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['reviewerId', 'reviewerName', 'targetId', 'targetName', 'targetType', 'rating', 'comment', 'status', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('reviewerId' in data) || (data.reviewerId is string && data.reviewerId.size() > 0 && data.reviewerId.size() < 100)) &&
+        (!('reviewerName' in data) || (data.reviewerName is string && data.reviewerName.size() > 0 && data.reviewerName.size() < 200)) &&
+        (!('targetId' in data) || (data.targetId is string && data.targetId.size() > 0 && data.targetId.size() < 100)) &&
+        (!('targetName' in data) || (data.targetName is string && data.targetName.size() > 0 && data.targetName.size() < 200)) &&
+        (!('targetType' in data) || (data.targetType in ['property', 'landlord', 'renter'])) &&
+        (!('rating' in data) || (data.rating is number && data.rating >= 1 && data.rating <= 5)) &&
+        (!('comment' in data) || (data.comment is string && data.comment.size() > 0 && data.comment.size() < 2000)) &&
+        (!('status' in data) || (data.status in ['approved', 'flagged', 'pending', 'removed'])) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt))) &&
+        (!('flagReason' in data) || data.flagReason == null || (data.flagReason is string && data.flagReason.size() < 500)) &&
+        (!('flaggedBy' in data) || data.flaggedBy == null || (data.flaggedBy is string && data.flaggedBy.size() < 100)) &&
+        (!('adminNotes' in data) || data.adminNotes == null || (data.adminNotes is string && data.adminNotes.size() < 1000));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidPublicProfile(data, isCreate) {
+      let allowedFields = ['uid', 'name', 'photoUrl', 'businessName', 'businessDescription', 'website', 'contactEmail', 'contactPhone', 'createdAt'];
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['uid', 'name', 'createdAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('uid' in data) || (data.uid is string && data.uid.size() > 0 && data.uid.size() < 128)) &&
+        (!('name' in data) || (data.name is string && data.name.size() > 0 && data.name.size() < 100)) &&
+        (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() < 500)) &&
+        (!('businessName' in data) || data.businessName == null || (data.businessName is string && data.businessName.size() < 100)) &&
+        (!('businessDescription' in data) || data.businessDescription == null || (data.businessDescription is string && data.businessDescription.size() < 2000)) &&
+        (!('website' in data) || data.website == null || (data.website is string && data.website.size() < 500)) &&
+        (!('contactEmail' in data) || data.contactEmail == null || (data.contactEmail is string && data.contactEmail.size() < 100 && isValidEmail(data.contactEmail))) &&
+        (!('contactPhone' in data) || data.contactPhone == null || (data.contactPhone is string && data.contactPhone.size() < 50)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    function isValidDispute(data, isCreate) {
+      let allowedFields = ['type', 'status', 'priority', 'tenantId', 'landlordId', 'tenantName', 'landlordName', 'propertyId', 'propertyTitle', 'description', 'evidence', 'conversationId', 'resolutionDecision', 'resolutionReason', 'adminNotes', 'createdAt', 'updatedAt'];
+      let validFields = hasOnlyAllowedFields(allowedFields);
+      
+      let requiredFields = isCreate ? ['type', 'status', 'priority', 'tenantId', 'landlordId', 'tenantName', 'landlordName', 'description', 'createdAt', 'updatedAt'] : [];
+      let hasRequired = isCreate ? hasRequiredFields(requiredFields) : true;
+
+      let validData = 
+        (!('type' in data) || (data.type in ['Payment Issue', 'Listing Complaint', 'User Misconduct', 'Booking Issue'])) &&
+        (!('status' in data) || (data.status in ['Open', 'Under Review', 'Resolved', 'Escalated'])) &&
+        (!('priority' in data) || (data.priority in ['Low', 'Medium', 'High'])) &&
+        (!('tenantId' in data) || (data.tenantId is string && data.tenantId.size() > 0 && data.tenantId.size() < 128)) &&
+        (!('landlordId' in data) || (data.landlordId is string && data.landlordId.size() > 0 && data.landlordId.size() < 128)) &&
+        (!('tenantName' in data) || (data.tenantName is string && data.tenantName.size() > 0 && data.tenantName.size() < 100)) &&
+        (!('landlordName' in data) || (data.landlordName is string && data.landlordName.size() > 0 && data.landlordName.size() < 100)) &&
+        (!('propertyId' in data) || data.propertyId == null || (data.propertyId is string && data.propertyId.size() > 0 && data.propertyId.size() < 128)) &&
+        (!('propertyTitle' in data) || data.propertyTitle == null || (data.propertyTitle is string && data.propertyTitle.size() > 0 && data.propertyTitle.size() < 200)) &&
+        (!('description' in data) || (data.description is string && data.description.size() > 0 && data.description.size() < 2000)) &&
+        (!('evidence' in data) || data.evidence == null || (data.evidence is list && data.evidence.size() <= 10)) &&
+        (!('conversationId' in data) || data.conversationId == null || (data.conversationId is string && data.conversationId.size() > 0 && data.conversationId.size() < 128)) &&
+        (!('resolutionDecision' in data) || data.resolutionDecision == null || (data.resolutionDecision is string && data.resolutionDecision.size() < 2000)) &&
+        (!('resolutionReason' in data) || data.resolutionReason == null || (data.resolutionReason is string && data.resolutionReason.size() < 2000)) &&
+        (!('adminNotes' in data) || data.adminNotes == null || (data.adminNotes is string && data.adminNotes.size() < 2000)) &&
+        (!('createdAt' in data) || (data.createdAt is string && isValidDateString(data.createdAt))) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && isValidDateString(data.updatedAt)));
+
+      return validFields && hasRequired && validData;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    request.resource.data.uid == userId &&
+                    (request.resource.data.role in ['renter', 'landlord'] || isAdmin());
+                    
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) && 
+                    request.resource.data.uid == resource.data.uid;
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /public_profiles/{profileId} {
+      allow read: if true;
+      
+      allow create: if isOwner(profileId) && isLandlord() && isValidPublicProfile(request.resource.data, true) &&
+                    request.resource.data.uid == profileId;
+                    
+      allow update: if (isOwner(profileId) || isAdmin()) && isValidPublicProfile(request.resource.data, false) &&
+                    request.resource.data.uid == resource.data.uid;
+                    
+      allow delete: if isAdmin() || isOwner(profileId);
+    }
+
+    match /properties/{propertyId} {
+      allow read: if true;
+      
+      allow create: if isLandlord() && isValidProperty(request.resource.data, true) && 
+                    request.resource.data.landlordId == request.auth.uid;
+                    
+      allow update: if isAuthenticated() && isValidProperty(request.resource.data, false) && 
+                    (
+                      (request.auth.uid == resource.data.landlordId && isFieldUnchanged('landlordId')) || 
+                      isAdmin()
+                    );
+                    
+      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.landlordId || isAdmin());
+    }
+
+    match /inquiries/{inquiryId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.renterId || request.auth.uid == resource.data.landlordId || isAdmin());
+      
+      allow create: if isAuthenticated() && isValidInquiry(request.resource.data, true) && 
+                    (request.resource.data.renterId == request.auth.uid || isAdmin());
+                    
+      allow update: if isAuthenticated() && isValidInquiry(request.resource.data, false) && 
+                    (request.auth.uid == resource.data.landlordId || isAdmin()) &&
+                    isFieldUnchanged('propertyId') &&
+                    isFieldUnchanged('renterId') &&
+                    isFieldUnchanged('landlordId') &&
+                    isFieldUnchanged('message') &&
+                    isFieldUnchanged('createdAt');
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /savedProperties/{savedPropertyId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidSavedProperty(request.resource.data, true) && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /viewings/{viewingId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.renterId || request.auth.uid == resource.data.landlordId || isAdmin());
+      
+      allow create: if isAuthenticated() && isValidViewing(request.resource.data, true) && 
+                    request.resource.data.renterId == request.auth.uid;
+                    
+      allow update: if isAuthenticated() && isValidViewing(request.resource.data, false) && 
+                    (request.auth.uid == resource.data.landlordId || request.auth.uid == resource.data.renterId || isAdmin()) &&
+                    isFieldUnchanged('propertyId') &&
+                    isFieldUnchanged('renterId') &&
+                    isFieldUnchanged('landlordId') &&
+                    isFieldUnchanged('createdAt');
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      
+      allow create: if isAuthenticated() && isValidReport(request.resource.data, true) && 
+                    request.resource.data.reportedBy == request.auth.uid;
+                    
+      allow update: if isAdmin() && isValidReport(request.resource.data, false);
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.renterId || request.auth.uid == resource.data.landlordId || isAdmin());
+      
+      allow create: if isAuthenticated() && isValidConversation(request.resource.data, true) && 
+                    (request.resource.data.renterId == request.auth.uid || request.resource.data.landlordId == request.auth.uid || isAdmin());
+                    
+      allow update: if isAuthenticated() && isValidConversation(request.resource.data, false) && 
+                    (request.auth.uid == resource.data.renterId || request.auth.uid == resource.data.landlordId || isAdmin());
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/conversations/$(resource.data.conversationId)) && 
+         (get(/databases/$(database)/documents/conversations/$(resource.data.conversationId)).data.renterId == request.auth.uid || 
+          get(/databases/$(database)/documents/conversations/$(resource.data.conversationId)).data.landlordId == request.auth.uid))
+      );
+      
+      allow create: if isAuthenticated() && isValidMessage(request.resource.data, true) && 
+                    request.resource.data.senderId == request.auth.uid;
+                    
+      allow update: if isAdmin() && isValidMessage(request.resource.data, false);
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.tenantId || request.auth.uid == resource.data.landlordId || isAdmin());
+      
+      allow create: if isAuthenticated() && isValidPayment(request.resource.data, true) && 
+                    request.resource.data.tenantId == request.auth.uid;
+                    
+      allow update: if isAuthenticated() && isValidPayment(request.resource.data, false) && 
+                    (request.auth.uid == resource.data.tenantId || request.auth.uid == resource.data.landlordId || isAdmin()) &&
+                    isFieldUnchanged('transactionId') &&
+                    isFieldUnchanged('bookingId') &&
+                    isFieldUnchanged('tenantId') &&
+                    isFieldUnchanged('landlordId') &&
+                    isFieldUnchanged('propertyId') &&
+                    isFieldUnchanged('amount') &&
+                    isFieldUnchanged('serviceFee') &&
+                    isFieldUnchanged('type') &&
+                    isFieldUnchanged('method') &&
+                    isFieldUnchanged('createdAt');
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.tenantId || request.auth.uid == resource.data.landlordId || isAdmin());
+      
+      allow create: if isAuthenticated() && isValidBooking(request.resource.data, true) && 
+                    request.resource.data.tenantId == request.auth.uid;
+                    
+      allow update: if isAuthenticated() && isValidBooking(request.resource.data, false) && 
+                    (request.auth.uid == resource.data.tenantId || request.auth.uid == resource.data.landlordId || isAdmin()) &&
+                    isFieldUnchanged('propertyId') &&
+                    isFieldUnchanged('tenantId') &&
+                    isFieldUnchanged('landlordId') &&
+                    isFieldUnchanged('startDate') &&
+                    isFieldUnchanged('endDate') &&
+                    isFieldUnchanged('rentAmount') &&
+                    isFieldUnchanged('depositAmount');
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /applications/{applicationId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.tenantId || request.auth.uid == resource.data.landlordId || isAdmin());
+      
+      allow create: if isAuthenticated() && isValidApplication(request.resource.data, true) && 
+                    request.resource.data.tenantId == request.auth.uid;
+                    
+      allow update: if isAuthenticated() && isValidApplication(request.resource.data, false) && 
+                    (request.auth.uid == resource.data.tenantId || request.auth.uid == resource.data.landlordId || isAdmin()) &&
+                    isFieldUnchanged('propertyId') &&
+                    isFieldUnchanged('tenantId') &&
+                    isFieldUnchanged('landlordId') &&
+                    isFieldUnchanged('moveInDate') &&
+                    isFieldUnchanged('occupants') &&
+                    isFieldUnchanged('employmentStatus') &&
+                    isFieldUnchanged('monthlyIncome') &&
+                    isFieldUnchanged('createdAt');
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data, true);
+                    
+      allow update: if isAuthenticated() && isValidNotification(request.resource.data, false) && 
+                    request.auth.uid == resource.data.userId &&
+                    isFieldUnchanged('userId') &&
+                    isFieldUnchanged('title') &&
+                    isFieldUnchanged('message') &&
+                    isFieldUnchanged('type') &&
+                    isFieldUnchanged('createdAt') &&
+                    isFieldUnchanged('link');
+                    
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+    match /adminNotifications/{notificationId} {
+      allow read: if isAdmin();
+      
+      allow create: if isAdmin() && isValidAdminNotification(request.resource.data, true);
+                    
+      allow update: if isAdmin() && isValidAdminNotification(request.resource.data, false) && 
+                    isFieldUnchanged('createdAt');
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      
+      allow create: if isAuthenticated() && isValidReview(request.resource.data, true) &&
+                    request.auth.uid == request.resource.data.reviewerId;
+                    
+      allow update: if isAuthenticated() && isValidReview(request.resource.data, false) && 
+                    (isAdmin() || (request.auth.uid == resource.data.reviewerId && 
+                                   isFieldUnchanged('reviewerId') &&
+                                   isFieldUnchanged('targetId') &&
+                                   isFieldUnchanged('targetType') &&
+                                   isFieldUnchanged('createdAt')));
+                    
+      allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.reviewerId);
+    }
+
+    match /disputes/{disputeId} {
+      allow read: if isAdmin() || (isAuthenticated() && (request.auth.uid == resource.data.tenantId || request.auth.uid == resource.data.landlordId));
+      
+      allow create: if isAuthenticated() && isValidDispute(request.resource.data, true) && 
+                    (request.resource.data.tenantId == request.auth.uid || request.resource.data.landlordId == request.auth.uid);
+                    
+      allow update: if isAdmin() && isValidDispute(request.resource.data, false) && 
+                    isFieldUnchanged('createdAt');
+                    
+      allow delete: if isAdmin();
+    }
+  }
+}
